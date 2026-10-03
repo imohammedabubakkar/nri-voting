@@ -4,6 +4,7 @@ import { Layout } from '../components/Layout';
 import { Save, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { DISTRICTS_BY_STATE } from '../data/indiaData';
 import { resetConstituencyVoting } from '../utils/voteUtils';
+import { api } from '../services/api';
 
 export const COUNTRIES = [
   'Afghanistan','Albania','Algeria','Andorra','Angola','Antigua and Barbuda','Argentina','Armenia','Australia',
@@ -406,7 +407,7 @@ export function CreateUserPage() {
 
   const hasDupError = dupErrors.aadhaar !== '' || dupErrors.voterId !== '' || dupErrors.passport !== '';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError('');
 
@@ -430,7 +431,15 @@ export function CreateUserPage() {
     }
 
     // Final duplicate check at submit time (catches paste or autofill that skipped onChange)
-    const users: Record<string, string>[] = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+    let users: Record<string, any>[];
+    try {
+      const response = await api.users.getAll();
+      users = response.users;
+      localStorage.setItem('registeredUsers', JSON.stringify(users.map((user: any) => ({ ...user, id: user.id || user._id }))));
+    } catch (error) {
+      setSubmitError(error instanceof Error ? `Could not reach the shared voter database: ${error.message}` : 'Could not reach the shared voter database.');
+      return;
+    }
     const newErrors = { aadhaar: '', voterId: '', passport: '' };
     if (users.some(u => (u.aadhaar || '').trim() === form.aadhaar.trim())) newErrors.aadhaar = 'This Aadhaar number is already registered.';
     if (users.some(u => (u.voterId || '').trim() === form.voterId.trim())) newErrors.voterId = 'This Voter ID is already registered.';
@@ -443,7 +452,6 @@ export function CreateUserPage() {
     }
 
     const newUser = {
-      id: Date.now(),
       name: form.name, dob: form.dob, age: form.age,
       aadhaar: form.aadhaar, voterId: form.voterId, passport: form.passport,
       country: form.country, currentPlace: form.currentPlace,
@@ -456,7 +464,15 @@ export function CreateUserPage() {
       hasVotedAssembly: false,
       hasVotedParliament: false,
     };
-    localStorage.setItem('registeredUsers', JSON.stringify([...users, newUser]));
+    let createdUser: any;
+    try {
+      const response = await api.users.create(newUser);
+      createdUser = { ...response.user, id: response.user.id || response.user._id };
+      localStorage.setItem('registeredUsers', JSON.stringify([...users, createdUser]));
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Could not save voter to the shared database.');
+      return;
+    }
 
     // When a new user registers in a constituency, reset voting so vote starts
     // from first (0 votes) for all candidates of the same constituency

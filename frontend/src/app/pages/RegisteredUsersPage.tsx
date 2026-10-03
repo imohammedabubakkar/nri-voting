@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from '../components/Layout';
 import { Search, ArrowLeft, Pencil, Trash2, X, Save, UserCheck } from 'lucide-react';
 import { COUNTRIES, CITIES_BY_COUNTRY, PINCODE_FORMAT } from './CreateUserPage';
 import { DISTRICTS_BY_STATE } from '../data/indiaData';
+import { api } from '../services/api';
 
 interface User {
-  id: number;
+  id: string | number;
   name: string;
   dob?: string;
   age?: string;
@@ -73,7 +74,7 @@ function UserProfileCard({
 }: {
   user: User;
   openEdit: (u: User) => void;
-  setDeleteConfirmId: (id: number) => void;
+  setDeleteConfirmId: (id: string | number) => void;
 }) {
   return (
     <div className="border-2 border-blue-200 rounded-xl overflow-hidden shadow-sm bg-white">
@@ -162,11 +163,22 @@ function UserProfileCard({
 export function RegisteredUsersPage() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
-  const [users, setUsers] = useState<User[]>(JSON.parse(localStorage.getItem('registeredUsers') || '[]'));
-  const [selectedUserId, setSelectedUserId] = useState<number | ''>('');
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string | number | ''>('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState<User | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | number | null>(null);
+  const [databaseError, setDatabaseError] = useState('');
+
+  useEffect(() => {
+    api.users.getAll()
+      .then(({ users: savedUsers }) => {
+        const normalized = savedUsers.map((user: any) => ({ ...user, id: user.id || user._id }));
+        setUsers(normalized);
+        localStorage.setItem('registeredUsers', JSON.stringify(normalized));
+      })
+      .catch((error: Error) => setDatabaseError(`Could not load the shared voter database: ${error.message}`));
+  }, []);
 
   const filteredUsers = users.filter(user =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -233,12 +245,18 @@ export function RegisteredUsersPage() {
     ? [editForm.indianDistrict, ...baseDistricts]
     : baseDistricts;
 
-  const deleteUser = (id: number) => {
-    const updated = users.filter(u => u.id !== id);
-    setUsers(updated);
-    localStorage.setItem('registeredUsers', JSON.stringify(updated));
-    setDeleteConfirmId(null);
-    if (selectedUserId === id) setSelectedUserId('');
+  const deleteUser = async (id: string | number) => {
+    try {
+      await api.users.delete(String(id));
+      const updated = users.filter(u => String(u.id) !== String(id));
+      setUsers(updated);
+      localStorage.setItem('registeredUsers', JSON.stringify(updated));
+      setDeleteConfirmId(null);
+      if (String(selectedUserId) === String(id)) setSelectedUserId('');
+      setDatabaseError('');
+    } catch (error) {
+      setDatabaseError(error instanceof Error ? error.message : 'Could not delete voter.');
+    }
   };
 
   const saveEdit = () => {
@@ -253,14 +271,18 @@ export function RegisteredUsersPage() {
       alert('Passport number must be 2 capital letters followed by 6 numbers (e.g. AB123456) or 1 capital letter followed by 7 numbers (e.g. A1234567).');
       return;
     }
-    const updated = users.map(u => u.id === editForm.id ? editForm : u);
-    setUsers(updated);
-    localStorage.setItem('registeredUsers', JSON.stringify(updated));
-    const current = JSON.parse(localStorage.getItem('currentUser') || 'null');
-    if (current && current.id === editForm.id) {
-      localStorage.setItem('currentUser', JSON.stringify(editForm));
-    }
-    closeEdit();
+    api.users.update(String(editForm.id), editForm)
+      .then(({ user }) => {
+        const savedUser = { ...user, id: user.id || user._id };
+        const updated = users.map(u => String(u.id) === String(editForm.id) ? savedUser : u);
+        setUsers(updated);
+        localStorage.setItem('registeredUsers', JSON.stringify(updated));
+        const current = JSON.parse(localStorage.getItem('currentUser') || 'null');
+        if (current && String(current.id) === String(editForm.id)) localStorage.setItem('currentUser', JSON.stringify(savedUser));
+        closeEdit();
+        setDatabaseError('');
+      })
+      .catch((error: Error) => setDatabaseError(error.message));
   };
 
   return (
@@ -279,6 +301,11 @@ export function RegisteredUsersPage() {
             <h2 className="text-3xl font-bold text-blue-900 mb-2">Registered Users</h2>
             <p className="text-gray-600">{users.length} registered voter{users.length !== 1 ? 's' : ''}</p>
           </div>
+          {databaseError && (
+            <div role="alert" className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {databaseError} Set <code>VITE_API_URL</code> to the deployed backend URL and make sure its MongoDB database is running.
+            </div>
+          )}
 
           {/* Search bar & Dropdown Selector */}
           <div className="space-y-4 bg-gray-50 p-5 rounded-xl border border-gray-200">
@@ -330,7 +357,7 @@ export function RegisteredUsersPage() {
               <select
                 value={selectedUserId}
                 onChange={(e) => {
-                  const val = e.target.value ? Number(e.target.value) : '';
+                  const val = e.target.value || '';
                   setSelectedUserId(val);
                   if (val !== '') {
                     setSearchTerm('');
@@ -359,7 +386,7 @@ export function RegisteredUsersPage() {
             }
 
             const isSearching = searchTerm.trim().length > 0;
-            const selectedUser = users.find(u => u.id === selectedUserId);
+            const selectedUser = users.find(u => String(u.id) === String(selectedUserId));
 
             // 1. Searching by Name, Aadhaar, or Country - Immediately display matching voters
             if (isSearching) {
