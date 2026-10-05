@@ -8,10 +8,33 @@ import { notFoundHandler, errorHandler } from './middlewares/errorHandler.js';
 
 export function createApp(): Express {
   const app = express();
+  const configuredOrigins = config.corsOrigin
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .map((origin) => {
+      if (origin === '*') return origin;
+      try {
+        return new URL(origin).origin;
+      } catch {
+        return origin.replace(/\/$/, '');
+      }
+    });
+  const allowedOrigins = new Set([
+    ...configuredOrigins,
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ]);
 
   // Middleware
   app.use(cors({
-    origin: config.corsOrigin === '*' ? true : [config.corsOrigin, 'http://localhost:5173', 'http://localhost:3000','https://nri-voting-6grf-blue.vercel.app/'],
+    origin: (origin, callback) => {
+      // Requests from tools such as curl do not send an Origin header.
+      if (!origin || configuredOrigins.includes('*') || allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    },
     credentials: true,
   }));
   app.use(express.json());
