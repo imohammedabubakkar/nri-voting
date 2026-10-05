@@ -11,7 +11,7 @@ export function createApp(): Express {
 
   // Middleware
   app.use(cors({
-    origin: config.corsOrigin === '*' ? true : [config.corsOrigin, 'http://localhost:5173', 'http://localhost:3000'],
+    origin: config.corsOrigin === '*' ? true : [config.corsOrigin, 'http://localhost:5173', 'http://localhost:3000','https://nri-voting-6grf-blue.vercel.app/'],
     credentials: true,
   }));
   app.use(express.json());
