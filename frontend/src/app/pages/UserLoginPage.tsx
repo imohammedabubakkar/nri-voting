@@ -55,6 +55,11 @@ export function UserLoginPage() {
   const [aadhaar, setAadhaar] = useState('');
   const [error, setError] = useState('');
 
+  const formatAadhaar = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 12);
+    return digits.match(/.{1,4}/g)?.join('  ') ?? '';
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanAadhaar = aadhaar.replace(/\s+/g, '').trim();
@@ -96,21 +101,24 @@ export function UserLoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="aadhaar" className="block text-sm font-semibold text-gray-700 mb-2">
                 Aadhaar Number
               </label>
               <input
+                id="aadhaar"
                 type="text"
                 value={aadhaar}
                 onChange={(e) => {
-                  setAadhaar(e.target.value);
+                  setAadhaar(formatAadhaar(e.target.value));
                   if (error) setError('');
                 }}
                 className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none text-center text-lg tracking-widest font-mono ${
                   error ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-orange-500'
                 }`}
-                placeholder="XXXX XXXX XXXX"
-                maxLength={14}
+                placeholder="Enter Aadhaar Number"
+                maxLength={16}
+                inputMode="numeric"
+                autoComplete="off"
                 required
               />
               {error && (
