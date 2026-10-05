@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from '../components/Layout';
 import { Lock, User, ArrowLeft } from 'lucide-react';
+import { api } from '../services/api';
 
 export function AdminLoginPage() {
   const navigate = useNavigate();
@@ -10,13 +11,15 @@ export function AdminLoginPage() {
 
   const [error, setError] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'abubakkar' && password === '10092004') {
+    try {
+      const result = await api.auth.adminLogin(username, password);
+      localStorage.setItem('token', result.token);
       localStorage.setItem('isAdminLoggedIn', 'true');
       navigate('/admin/dashboard');
-    } else {
-      setError('Invalid username or password.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid username or password.');
     }
   };
 

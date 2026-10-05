@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { protectAdmin } from '../middlewares/authMiddleware.js';
 import {
   getCandidates,
   getCandidateById,
@@ -10,6 +11,7 @@ import {
 const router = Router();
 
 router.get('/', getCandidates);
+router.use(protectAdmin);
 router.post('/', createCandidate);
 router.get('/:id', getCandidateById);
 router.put('/:id', updateCandidate);

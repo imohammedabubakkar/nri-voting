@@ -5,6 +5,7 @@ import { CheckCircle } from 'lucide-react';
 import { PARTY_SYMBOL_IMAGES } from '../data/partySymbolImages';
 import { ensureNotaCandidates } from '../utils/candidateUtils';
 import { getCountryElectionStatus } from '../utils/timezoneUtils';
+import { api } from '../services/api';
 
 interface Candidate {
   id: number;
@@ -25,17 +26,21 @@ export function VotingPage() {
 
   useEffect(() => {
     const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-    const schedule = JSON.parse(localStorage.getItem('electionSchedule') || 'null');
-    const countryStatus = getCountryElectionStatus(schedule, currentUser?.country || 'India', currentUser?.currentPlace || '', new Date());
-    if (countryStatus.status !== 'active') {
-      alert(countryStatus.message || 'Voting is not active at this time.');
-      navigate('/user/dashboard');
-      return;
-    }
-
-    const stored: Candidate[] = JSON.parse(localStorage.getItem('registeredCandidates') || '[]');
-    const resolved = ensureNotaCandidates(stored as any);
-    setCandidates(resolved as Candidate[]);
+    api.election.getSchedule().then(({ schedule }) => {
+      if (schedule) localStorage.setItem('electionSchedule', JSON.stringify({ ...schedule, country: schedule.votingCountry, city: schedule.votingCity }));
+      const countryStatus = getCountryElectionStatus(schedule, currentUser?.country || 'India', currentUser?.currentPlace || '', new Date());
+      if (countryStatus.status !== 'active') {
+        alert(countryStatus.message || 'Voting is not active at this time.');
+        navigate('/user/dashboard');
+        return null;
+      }
+      return api.candidates.getAll();
+    }).then(result => {
+      if (!result) return;
+      const stored = result.candidates.map((c: any) => ({ ...c, id: c._id }));
+      localStorage.setItem('registeredCandidates', JSON.stringify(stored));
+      setCandidates(ensureNotaCandidates(stored as any) as Candidate[]);
+    }).catch(error => alert(error instanceof Error ? error.message : 'Could not load election data from MongoDB.'));
   }, [navigate]);
 
   const handleContinue = () => {
@@ -49,8 +54,6 @@ export function VotingPage() {
       return;
     }
     const selected = candidates.find(c => c.id === selectedId);
-    const votes = JSON.parse(localStorage.getItem('votesCast') || '0');
-    localStorage.setItem('votesCast', JSON.stringify(votes + 1));
     navigate('/user/vote-confirmation', { state: { selectedParty: selected } });
   };
 

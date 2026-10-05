@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from '../components/Layout';
+import { api } from '../services/api';
 import { UserPlus, Users, BarChart3, Download, Vote, Play, CheckCircle2, Square, Clock, LogOut } from 'lucide-react';
 import { RegionalClockCard } from '../components/RegionalClockCard';
 
@@ -27,6 +28,15 @@ export function AdminDashboardPage() {
     return JSON.parse(localStorage.getItem('electionSchedule') || 'null');
   });
 
+  useEffect(() => {
+    api.election.getSchedule().then(({ schedule: shared }) => {
+      const next = shared ? { ...shared, country: shared.votingCountry, city: shared.votingCity } : null;
+      if (next) localStorage.setItem('electionSchedule', JSON.stringify(next));
+      else localStorage.removeItem('electionSchedule');
+      setSchedule(next);
+    }).catch(error => console.error('Could not load schedule from MongoDB:', error));
+  }, []);
+
   // Live ticking clock (1-second precision) and automatic election stop checker
   useEffect(() => {
     const update = () => {
@@ -50,6 +60,7 @@ export function AdminDashboardPage() {
 
   const handleLogout = () => {
     localStorage.removeItem('isAdminLoggedIn');
+    localStorage.removeItem('token');
     navigate('/admin/login');
   };
 

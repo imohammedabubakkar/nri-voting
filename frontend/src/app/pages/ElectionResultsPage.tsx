@@ -9,6 +9,7 @@ import { DISTRICTS_BY_STATE } from '../data/indiaData';
 import { PARTY_SYMBOL_IMAGES } from '../data/partySymbolImages';
 import { ensureNotaCandidates, isNotaCandidate } from '../utils/candidateUtils';
 import { getResultReleaseStatus } from '../utils/timezoneUtils';
+import { api } from '../services/api';
 
 interface RegisteredUser {
   id: number;
@@ -223,6 +224,24 @@ export function ElectionResultsPage() {
   const [, setRefresh] = useState(0);
   const [now, setNow] = useState<Date>(new Date());
   const [adminPreviewUnlocked, setAdminPreviewUnlocked] = useState(false);
+
+  useEffect(() => {
+    Promise.all([api.users.getAll(), api.candidates.getAll(), api.election.getSchedule(), api.votes.getResults()])
+      .then(([users, candidates, election, result]) => {
+        localStorage.setItem('registeredUsers', JSON.stringify(users.users.map((u: any) => ({ ...u, id: u._id }))));
+        localStorage.setItem('registeredCandidates', JSON.stringify(candidates.candidates.map((c: any) => ({ ...c, id: c._id }))));
+        if (election.schedule) localStorage.setItem('electionSchedule', JSON.stringify({ ...election.schedule, country: election.schedule.votingCountry, city: election.schedule.votingCity }));
+        else localStorage.removeItem('electionSchedule');
+        const votesData: Record<string, Record<string, Record<string, number>>> = {};
+        for (const group of result.results) {
+          votesData[group.electionType] ||= {};
+          votesData[group.electionType][group.constituency] ||= {};
+          for (const candidate of group.candidates) votesData[group.electionType][group.constituency][candidate.candidateId] = candidate.votes;
+        }
+        localStorage.setItem('votesData', JSON.stringify(votesData));
+        setRefresh(value => value + 1);
+      }).catch(error => alert(error instanceof Error ? error.message : 'Could not load shared election results.'));
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);

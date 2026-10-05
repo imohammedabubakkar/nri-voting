@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { protectAdmin } from '../middlewares/authMiddleware.js';
 import {
   getUsers,
   checkDuplicate,
@@ -10,6 +11,7 @@ import {
 
 const router = Router();
 
+router.use(protectAdmin);
 router.get('/', getUsers);
 router.get('/check-duplicate', checkDuplicate);
 router.post('/', createUser);

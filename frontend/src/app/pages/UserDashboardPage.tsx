@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from '../components/Layout';
+import { api } from '../services/api';
 import {
   Vote, MapPin, CreditCard, Globe, Home, User, CheckCircle, CheckCircle2,
   Building2, Landmark, Clock, AlertTriangle, CalendarX, Lock, LogOut,
@@ -357,9 +358,21 @@ export function UserDashboardPage() {
   const [parliamentCandidates, setParliamentCandidates] = useState<Candidate[]>([]);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
+  useEffect(() => {
+    Promise.all([api.auth.getUserProfile(), api.election.getSchedule(), api.candidates.getAll()])
+      .then(([profile, election, candidates]) => {
+        localStorage.setItem('currentUser', JSON.stringify({ ...profile.user, id: profile.user._id }));
+        if (election.schedule) localStorage.setItem('electionSchedule', JSON.stringify({ ...election.schedule, country: election.schedule.votingCountry, city: election.schedule.votingCity }));
+        else localStorage.removeItem('electionSchedule');
+        localStorage.setItem('registeredCandidates', JSON.stringify(candidates.candidates.map((c: any) => ({ ...c, id: c._id }))));
+        setTick(value => value + 1);
+      }).catch(error => console.error('Could not refresh data from MongoDB:', error));
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('currentUser');
     localStorage.removeItem('userToken');
+    localStorage.removeItem('token');
     navigate('/user/login');
   };
 

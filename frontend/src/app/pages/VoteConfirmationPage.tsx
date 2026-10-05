@@ -4,6 +4,7 @@ import { Layout } from '../components/Layout';
 import { CheckCircle, AlertCircle, Globe } from 'lucide-react';
 import { PARTY_SYMBOL_IMAGES } from '../data/partySymbolImages';
 import { getCountryElectionStatus } from '../utils/timezoneUtils';
+import { api } from '../services/api';
 
 interface Candidate {
   id: number;
@@ -37,7 +38,7 @@ export function VoteConfirmationPage() {
 
   const electionLabel = electionType === 'assembly' ? 'Assembly Constituency' : 'Parliament Constituency';
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     // Guard: verify election is still within time window according to the voter's country timezone
     const schedule = JSON.parse(localStorage.getItem('electionSchedule') || 'null');
     const countryStatus = getCountryElectionStatus(schedule, votingCountry, votingCity, new Date());
@@ -49,37 +50,18 @@ export function VoteConfirmationPage() {
     }
 
     setIsConfirming(true);
-    setTimeout(() => {
-      // Mark the specific election type as voted
-      const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-      if (currentUser) {
-        const voteKey = electionType === 'assembly' ? 'hasVotedAssembly' : 'hasVotedParliament';
-        const updated = { ...currentUser, [voteKey]: true };
-        localStorage.setItem('currentUser', JSON.stringify(updated));
-        const users = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-        const updatedUsers = users.map((u: { aadhaar?: string }) =>
-          u.aadhaar === currentUser.aadhaar ? { ...u, [voteKey]: true } : u
-        );
-        localStorage.setItem('registeredUsers', JSON.stringify(updatedUsers));
-      }
-
-      // Record which candidate received this vote
-      const votesData: Record<string, Record<string, Record<string, number>>> =
-        JSON.parse(localStorage.getItem('votesData') || '{}');
-      if (!votesData[electionType]) votesData[electionType] = {};
-      if (!votesData[electionType][selectedParty.constituency]) votesData[electionType][selectedParty.constituency] = {};
-      const key = String(selectedParty.id);
-      votesData[electionType][selectedParty.constituency][key] =
-        (votesData[electionType][selectedParty.constituency][key] || 0) + 1;
-      localStorage.setItem('votesData', JSON.stringify(votesData));
-
-      const votes = JSON.parse(localStorage.getItem('votesCast') || '0');
-      localStorage.setItem('votesCast', JSON.stringify(votes + 1));
+    try {
+      await api.votes.castVote({ candidateId: String(selectedParty.id), electionType });
+      const profile = await api.auth.getUserProfile();
+      localStorage.setItem('currentUser', JSON.stringify({ ...profile.user, id: profile.user._id }));
       setIsConfirmed(true);
       setTimeout(() => {
         navigate('/user/dashboard');
       }, 3000);
-    }, 1500);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Could not record vote in MongoDB.');
+      setIsConfirming(false);
+    }
   };
 
   const PartySymbol = ({ size }: { size: 'lg' | 'sm' }) => {

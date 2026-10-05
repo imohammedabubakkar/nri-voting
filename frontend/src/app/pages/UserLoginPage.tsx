@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from '../components/Layout';
 import { CheckCircle, ArrowLeft } from 'lucide-react';
 import { getBrowserTimeZone } from '../utils/timezoneUtils';
+import { api } from '../services/api';
 
 const DEFAULT_DEMO_USERS = [
   {
@@ -54,21 +55,12 @@ export function UserLoginPage() {
   const [aadhaar, setAadhaar] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const raw = localStorage.getItem('registeredUsers');
-    const users = raw ? JSON.parse(raw) : [];
-    if (!users || users.length === 0) {
-      localStorage.setItem('registeredUsers', JSON.stringify(DEFAULT_DEMO_USERS));
-    }
-  }, []);
-
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanAadhaar = aadhaar.replace(/\s+/g, '').trim();
-    const registeredUsers: any[] = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    const matched = registeredUsers.find((u: any) => (u.aadhaar || '').replace(/\s+/g, '') === cleanAadhaar);
-
-    if (matched) {
+    try {
+      const result = await api.auth.userLogin(cleanAadhaar);
+      const matched = { ...result.user, id: result.user._id };
       const clientTimeZone = getBrowserTimeZone();
       const sessionUser = {
         ...matched,
@@ -76,9 +68,10 @@ export function UserLoginPage() {
         lastLoginAt: new Date().toISOString(),
       };
       localStorage.setItem('currentUser', JSON.stringify(sessionUser));
+      localStorage.setItem('token', result.token);
       navigate('/user/dashboard');
-    } else {
-      setError('Aadhaar number not found. Please check and try again.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Aadhaar number not found. Please check and try again.');
     }
   };
 

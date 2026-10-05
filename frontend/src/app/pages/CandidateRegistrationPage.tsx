@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from '../components/Layout';
+import { api } from '../services/api';
 import { ArrowLeft, UserPlus, Pencil, Trash2, X } from 'lucide-react';
 import { DISTRICTS_BY_STATE } from '../data/indiaData';
 import { PARTIES, Party } from '../data/partiesData';
@@ -10,7 +11,7 @@ import { ensureNotaCandidates, isNotaCandidate } from '../utils/candidateUtils';
 type ElectionType = 'assembly' | 'parliament' | '';
 
 export interface Candidate {
-  id: number;
+  id: number | string;
   electionType: ElectionType;
   state: string;
   district: string;
@@ -88,8 +89,8 @@ export function CandidateRegistrationPage() {
   const [form, setForm] = useState({ ...BLANK_FORM });
   const [showForm, setShowForm] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<number | string | null>(null);
+  const [deleteId, setDeleteId] = useState<number | string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -99,9 +100,12 @@ export function CandidateRegistrationPage() {
   const [filterConstituency, setFilterConstituency] = useState('');
 
   useEffect(() => {
-    const stored: Candidate[] = JSON.parse(localStorage.getItem('registeredCandidates') || '[]');
-    const withNota = ensureNotaCandidates(stored as any);
-    setCandidates(withNota as Candidate[]);
+    Promise.all([api.candidates.getAll(), api.users.getAll()]).then(([candidateResponse, userResponse]) => {
+      const stored = candidateResponse.candidates.map((c: any) => ({ ...c, id: c._id }));
+      setCandidates(ensureNotaCandidates(stored as any) as Candidate[]);
+      localStorage.setItem('registeredCandidates', JSON.stringify(stored));
+      localStorage.setItem('registeredUsers', JSON.stringify(userResponse.users.map((u: any) => ({ ...u, id: u._id }))));
+    }).catch(error => setError(error instanceof Error ? error.message : 'Could not load shared election data.'));
   }, []);
 
   // Derive constituency options from registered voters
@@ -194,7 +198,7 @@ export function CandidateRegistrationPage() {
     setCandidates(withNota as Candidate[]);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     if (!form.electionType) return setError('Please select election type.');
@@ -212,20 +216,22 @@ export function CandidateRegistrationPage() {
     const upperConstituency = form.constituency.trim().toUpperCase();
 
     if (editId !== null) {
-      const updated = candidates.map(c =>
-        c.id === editId ? { ...form, constituency: upperConstituency, id: editId, partySymbolImage: form.partySymbolImage } as Candidate : c
-      );
-      saveToStorage(updated);
+      try {
+        await api.candidates.update(String(editId), { ...form, constituency: upperConstituency });
+        const { candidates: fresh } = await api.candidates.getAll();
+        saveToStorage(ensureNotaCandidates(fresh.map((c: any) => ({ ...c, id: c._id })) as any) as Candidate[]);
+      } catch (err) { setError(err instanceof Error ? err.message : 'Could not update candidate.'); return; }
       setFilterState(form.state);
       setFilterDistrict(form.district);
       setFilterElectionType(form.electionType);
       setFilterConstituency(upperConstituency);
       setSuccess('Candidate updated successfully!');
     } else {
-      const newId = Date.now();
-      const newCandidate: Candidate = { ...form, constituency: upperConstituency, id: newId } as Candidate;
-      const updated = [...candidates, newCandidate];
-      saveToStorage(updated);
+      try {
+        await api.candidates.create({ ...form, constituency: upperConstituency });
+        const { candidates: fresh } = await api.candidates.getAll();
+        saveToStorage(ensureNotaCandidates(fresh.map((c: any) => ({ ...c, id: c._id })) as any) as Candidate[]);
+      } catch (err) { setError(err instanceof Error ? err.message : 'Could not save candidate.'); return; }
       setFilterState(form.state);
       setFilterDistrict(form.district);
       setFilterElectionType(form.electionType);
@@ -259,9 +265,12 @@ export function CandidateRegistrationPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function handleDelete(id: number) {
-    const updated = candidates.filter(c => c.id !== id);
-    saveToStorage(updated);
+  async function handleDelete(id: number | string) {
+    try {
+      await api.candidates.delete(String(id));
+      const { candidates: fresh } = await api.candidates.getAll();
+      saveToStorage(ensureNotaCandidates(fresh.map((c: any) => ({ ...c, id: c._id })) as any) as Candidate[]);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not delete candidate.'); return; }
     setDeleteId(null);
     setSuccess('Candidate deleted.');
     setTimeout(() => setSuccess(''), 2500);

@@ -1,6 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import mongoose from 'mongoose';
 import { config } from './config/index.js';
 import apiRouter from './routes/index.js';
 import { notFoundHandler, errorHandler } from './middlewares/errorHandler.js';
@@ -22,8 +23,10 @@ export function createApp(): Express {
 
   // Health check
   app.get('/api/health', (req: Request, res: Response) => {
-    res.json({
-      status: 'healthy',
+    const databaseConnected = mongoose.connection.readyState === 1;
+    res.status(databaseConnected ? 200 : 503).json({
+      status: databaseConnected ? 'healthy' : 'unavailable',
+      database: databaseConnected ? 'connected' : 'disconnected',
       timestamp: new Date().toISOString(),
       service: 'Online Voting & Election Portal API',
       version: '1.0.0',

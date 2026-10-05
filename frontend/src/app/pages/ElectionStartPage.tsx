@@ -8,8 +8,8 @@ import {
 import { DISTRICTS_BY_STATE } from '../data/indiaData';
 import { CountryClockSelector } from '../components/RegionalClockCard';
 import { getCountryElectionStatus, getCountryFlag, computeLiveElectionStatus, checkAndAutoStopElection, addDaysToDate } from '../utils/timezoneUtils';
-import { resetConstituencyVoting, resetAllConstituencyVoting } from '../utils/voteUtils';
 import { Time12Input } from '../components/Time12Input';
+import { api } from '../services/api';
 
 interface ElectionSchedule {
   date: string;
@@ -72,6 +72,26 @@ export function ElectionStartPage() {
     return (typeof localStorage !== 'undefined' && localStorage.getItem('selectedPreviewCity')) || '';
   });
   const [now, setNow] = useState(new Date());
+  const [, setDataRefresh] = useState(0);
+
+  useEffect(() => {
+    api.election.getSchedule().then(({ schedule }) => {
+      if (!schedule) { localStorage.removeItem('electionSchedule'); setExisting(null); return; }
+      const shared = { ...schedule, country: schedule.votingCountry, city: schedule.votingCity };
+      localStorage.setItem('electionSchedule', JSON.stringify(shared));
+      setExisting(shared);
+      setDate(shared.date || ''); setFromTime(shared.fromTime || ''); setToTime(shared.toTime || '');
+      setResultDate(shared.resultDate || ''); setResultTime(shared.resultTime || '');
+      setAllConstituencies(shared.allConstituencies ?? true); setState(shared.state || '');
+      setDistrict(shared.district || ''); setAssemblyConstituency(shared.assemblyConstituency || '');
+      setParliamentConstituency(shared.parliamentConstituency || '');
+    }).catch(error => setErrors([error instanceof Error ? error.message : 'Could not load election schedule.']));
+    Promise.all([api.users.getAll(), api.candidates.getAll()]).then(([users, candidates]) => {
+      localStorage.setItem('registeredUsers', JSON.stringify(users.users.map((u: any) => ({ ...u, id: u._id }))));
+      localStorage.setItem('registeredCandidates', JSON.stringify(candidates.candidates.map((c: any) => ({ ...c, id: c._id }))));
+      setDataRefresh(value => value + 1);
+    }).catch(error => setErrors([error instanceof Error ? error.message : 'Could not load shared voters and candidates.']));
+  }, []);
 
   // Live ticking clock (1-second precision) and automatic election stop checker
   useEffect(() => {
@@ -183,7 +203,7 @@ export function ElectionStartPage() {
     return errs;
   }
 
-  function handleStart() {
+  async function handleStart() {
     const errs = validate();
     if (errs.length) { setErrors(errs); return; }
     setErrors([]);
@@ -204,29 +224,23 @@ export function ElectionStartPage() {
       status: 'active',
       startedAt: Date.now(),
     };
-    localStorage.setItem('electionSchedule', JSON.stringify(schedule));
-    setExisting(schedule);
-    window.dispatchEvent(new CustomEvent('electionScheduleUpdated', { detail: schedule }));
-
-    // Whenever an election is launched from this page, reset voting so vote starts
-    // from first (0 votes) for all candidates of the same constituency
-    if (allConstituencies) {
-      resetAllConstituencyVoting({ reason: 'Election started for all constituencies' });
-    } else {
-      resetConstituencyVoting({
-        state,
-        district,
-        assemblyConstituency,
-        parliamentConstituency,
-        reason: 'Election started for selected constituencies',
+    try {
+      const { schedule: saved } = await api.election.setSchedule({
+        ...schedule, votingCountry: previewCountry, votingCity: previewCity,
       });
-    }
+      const sharedSchedule = { ...saved, country: saved.votingCountry, city: saved.votingCity };
+      localStorage.setItem('electionSchedule', JSON.stringify(sharedSchedule));
+      setExisting(sharedSchedule);
+      window.dispatchEvent(new CustomEvent('electionScheduleUpdated', { detail: sharedSchedule }));
+    } catch (error) { setErrors([error instanceof Error ? error.message : 'Could not save election schedule.']); return; }
 
     setSuccess(true);
     setTimeout(() => setSuccess(false), 4000);
   }
 
-  function handleStop() {
+  async function handleStop() {
+    try { await api.election.updateStatus('ended'); }
+    catch (error) { setErrors([error instanceof Error ? error.message : 'Could not stop election.']); return; }
     localStorage.removeItem('electionSchedule');
     localStorage.removeItem('selectedPreviewCountry');
     localStorage.removeItem('selectedPreviewCity');
@@ -241,7 +255,9 @@ export function ElectionStartPage() {
     window.location.reload();
   }
 
-  function handleClear() {
+  async function handleClear() {
+    try { await api.election.deleteSchedule(); }
+    catch (error) { setErrors([error instanceof Error ? error.message : 'Could not clear election schedule.']); return; }
     localStorage.removeItem('electionSchedule');
     localStorage.removeItem('selectedPreviewCountry');
     localStorage.removeItem('selectedPreviewCity');

@@ -24,6 +24,30 @@ export async function getCandidates(req: Request, res: Response, next: NextFunct
       query.partyName = partyName.trim();
     }
 
+    // Store NOTA as a real candidate so its Mongo ObjectId can be referenced by votes.
+    const realCandidates = await Candidate.find({
+      ...query,
+      partyAbbr: { $ne: 'NOTA' },
+      partyName: { $ne: 'None of the Above' },
+    });
+    await Promise.all(realCandidates.map(candidate => Candidate.updateOne(
+      {
+        electionType: candidate.electionType,
+        state: candidate.state,
+        district: candidate.district,
+        constituency: candidate.constituency,
+        partyName: 'None of the Above',
+      },
+      { $setOnInsert: {
+        name: 'None of the Above', dob: '1900-01-01', age: '0',
+        electionType: candidate.electionType, state: candidate.state,
+        district: candidate.district, constituency: candidate.constituency,
+        partyName: 'None of the Above', partySymbol: '✖️', partyAbbr: 'NOTA',
+        partySymbolImage: '/party-symbols/nota.png',
+      } },
+      { upsert: true },
+    )));
+
     const candidates = await Candidate.find(query).sort({ name: 1 });
 
     res.json({

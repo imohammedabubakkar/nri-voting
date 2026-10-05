@@ -1,9 +1,8 @@
-/**
- * API Service for communicating with the Election Portal Backend.
- * Base URL defaults to http://localhost:5000/api (or custom VITE_API_URL).
- */
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+/** API service for communicating with the Election Portal backend. */
+const configuredApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+const rawApiBase = configuredApiUrl || `${window.location.protocol}//${window.location.hostname}:5000`;
+const normalizedApiBase = rawApiBase.replace(/\/+$/, '');
+const API_BASE_URL = normalizedApiBase.endsWith('/api') ? normalizedApiBase : `${normalizedApiBase}/api`;
 
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('token');
@@ -22,6 +21,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers,
   });
 
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new Error(`The API at ${API_BASE_URL} returned a web page instead of JSON. Check VITE_API_URL and the backend deployment.`);
+  }
   const data = await response.json();
 
   if (!response.ok) {

@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from '../components/Layout';
+import { api } from '../services/api';
 import { Search, ArrowLeft, Pencil, Trash2, X, Save, UserCheck } from 'lucide-react';
 import { COUNTRIES, CITIES_BY_COUNTRY, PINCODE_FORMAT } from './CreateUserPage';
 import { DISTRICTS_BY_STATE } from '../data/indiaData';
 
 interface User {
-  id: number;
+  id: number | string;
   name: string;
   dob?: string;
   age?: string;
@@ -162,11 +163,18 @@ function UserProfileCard({
 export function RegisteredUsersPage() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
-  const [users, setUsers] = useState<User[]>(JSON.parse(localStorage.getItem('registeredUsers') || '[]'));
-  const [selectedUserId, setSelectedUserId] = useState<number | ''>('');
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<number | string | ''>('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState<User | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | string | null>(null);
+  useEffect(() => {
+    api.users.getAll().then(({ users: rows }) => {
+      const normalized = rows.map((u: any) => ({ ...u, id: u._id }));
+      setUsers(normalized);
+      localStorage.setItem('registeredUsers', JSON.stringify(normalized));
+    }).catch(error => alert(error instanceof Error ? error.message : 'Could not load voters from MongoDB.'));
+  }, []);
 
   const filteredUsers = users.filter(user =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -233,15 +241,19 @@ export function RegisteredUsersPage() {
     ? [editForm.indianDistrict, ...baseDistricts]
     : baseDistricts;
 
-  const deleteUser = (id: number) => {
-    const updated = users.filter(u => u.id !== id);
-    setUsers(updated);
-    localStorage.setItem('registeredUsers', JSON.stringify(updated));
+  const deleteUser = async (id: number | string) => {
+    try {
+      await api.users.delete(String(id));
+      const { users: rows } = await api.users.getAll();
+      const updated = rows.map((u: any) => ({ ...u, id: u._id }));
+      setUsers(updated);
+      localStorage.setItem('registeredUsers', JSON.stringify(updated));
+    } catch (error) { alert(error instanceof Error ? error.message : 'Could not delete voter.'); return; }
     setDeleteConfirmId(null);
     if (selectedUserId === id) setSelectedUserId('');
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editForm) return;
     const VOTER_ID_REGEX = /^[A-Z]{3}[0-9]{7}$/;
     if (editForm.voterId && !VOTER_ID_REGEX.test(editForm.voterId.trim())) {
@@ -253,9 +265,14 @@ export function RegisteredUsersPage() {
       alert('Passport number must be 2 capital letters followed by 6 numbers (e.g. AB123456) or 1 capital letter followed by 7 numbers (e.g. A1234567).');
       return;
     }
-    const updated = users.map(u => u.id === editForm.id ? editForm : u);
-    setUsers(updated);
-    localStorage.setItem('registeredUsers', JSON.stringify(updated));
+    try {
+      const { id: _id, ...updates } = editForm;
+      await api.users.update(String(editForm.id), updates);
+      const { users: rows } = await api.users.getAll();
+      const updated = rows.map((u: any) => ({ ...u, id: u._id }));
+      setUsers(updated);
+      localStorage.setItem('registeredUsers', JSON.stringify(updated));
+    } catch (error) { alert(error instanceof Error ? error.message : 'Could not update voter.'); return; }
     const current = JSON.parse(localStorage.getItem('currentUser') || 'null');
     if (current && current.id === editForm.id) {
       localStorage.setItem('currentUser', JSON.stringify(editForm));

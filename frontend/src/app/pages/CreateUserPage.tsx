@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from '../components/Layout';
+import { api } from '../services/api';
 import { Save, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { DISTRICTS_BY_STATE } from '../data/indiaData';
-import { resetConstituencyVoting } from '../utils/voteUtils';
 
 export const COUNTRIES = [
   'Afghanistan','Albania','Algeria','Andorra','Angola','Antigua and Barbuda','Argentina','Armenia','Australia',
@@ -277,19 +277,17 @@ export function CreateUserPage() {
   const age = form.age ? parseInt(form.age) : null;
   const ageIneligible = age !== null && age < 18;
 
-  const DUP_LABELS: Record<string, string> = {
-    aadhaar: 'Aadhaar number',
-    voterId: 'Voter ID',
-    passport: 'Passport number',
-  };
-
-  function runDupCheck(field: 'aadhaar' | 'voterId' | 'passport', value: string) {
-    const users: Record<string, string>[] = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    const exists = value.trim().length > 0 && users.some(u => (u[field] || '').trim() === value.trim());
-    setDupErrors(prev => ({
-      ...prev,
-      [field]: exists ? `This ${DUP_LABELS[field]} is already registered.` : '',
-    }));
+  async function runDupCheck(field: 'aadhaar' | 'voterId' | 'passport', value: string) {
+    if (!value.trim()) {
+      setDupErrors(prev => ({ ...prev, [field]: '' }));
+      return;
+    }
+    try {
+      const result = await api.users.checkDuplicate(field, value.trim());
+      setDupErrors(prev => ({ ...prev, [field]: result.exists ? result.message : '' }));
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Could not check duplicates in MongoDB.');
+    }
   }
 
   const VOTER_ID_REGEX = /^[A-Z]{3}[0-9]{7}$/;
@@ -406,7 +404,7 @@ export function CreateUserPage() {
 
   const hasDupError = dupErrors.aadhaar !== '' || dupErrors.voterId !== '' || dupErrors.passport !== '';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError('');
 
@@ -430,20 +428,7 @@ export function CreateUserPage() {
     }
 
     // Final duplicate check at submit time (catches paste or autofill that skipped onChange)
-    const users: Record<string, string>[] = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    const newErrors = { aadhaar: '', voterId: '', passport: '' };
-    if (users.some(u => (u.aadhaar || '').trim() === form.aadhaar.trim())) newErrors.aadhaar = 'This Aadhaar number is already registered.';
-    if (users.some(u => (u.voterId || '').trim() === form.voterId.trim())) newErrors.voterId = 'This Voter ID is already registered.';
-    if (users.some(u => (u.passport || '').trim() === form.passport.trim())) newErrors.passport = 'This Passport number is already registered.';
-
-    if (newErrors.aadhaar || newErrors.voterId || newErrors.passport) {
-      setDupErrors(newErrors);
-      setSubmitError('Please fix the duplicate field errors before submitting.');
-      return;
-    }
-
     const newUser = {
-      id: Date.now(),
       name: form.name, dob: form.dob, age: form.age,
       aadhaar: form.aadhaar, voterId: form.voterId, passport: form.passport,
       country: form.country, currentPlace: form.currentPlace,
@@ -456,19 +441,20 @@ export function CreateUserPage() {
       hasVotedAssembly: false,
       hasVotedParliament: false,
     };
-    localStorage.setItem('registeredUsers', JSON.stringify([...users, newUser]));
+    try {
+      const result = await api.users.create(newUser);
+      const users = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      localStorage.setItem('registeredUsers', JSON.stringify([...users, { ...result.user, id: result.user._id }]));
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Could not save voter to MongoDB.');
+      return;
+    }
 
     // When a new user registers in a constituency, reset voting so vote starts
     // from first (0 votes) for all candidates of the same constituency
-    resetConstituencyVoting({
-      assemblyConstituency: form.assemblyConstituency,
-      parliamentConstituency: form.parliamentConstituency,
-      reason: `New user registration: ${form.name}`,
-    });
+    // Keep existing MongoDB vote records intact when registering another voter.
 
-    alert(
-      `User registered successfully!\n\nVoting has been reset to start from first (0 votes) for all candidates in:\n• Assembly: ${form.assemblyConstituency || 'N/A'}\n• Parliament: ${form.parliamentConstituency || 'N/A'}\n\nAll voters in these constituencies can now vote.`
-    );
+    alert('Voter registered successfully.');
     navigate('/admin/registered-users');
   };
 

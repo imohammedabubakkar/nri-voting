@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from '../components/Layout';
+import { api } from '../services/api';
 import { ArrowLeft, Download, Search } from 'lucide-react';
 
 interface RegisteredUser {
-  id: number;
+  id: number | string;
   name: string;
   dob?: string;
   aadhaar?: string;
@@ -58,8 +59,11 @@ export function DownloadVotersPage() {
   const navigate = useNavigate();
   const [filterCountry, setFilterCountry] = useState('');
   const [filterPlace, setFilterPlace] = useState('');
+  const [allUsers, setAllUsers] = useState<RegisteredUser[]>([]);
 
-  const allUsers: RegisteredUser[] = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+  useEffect(() => {
+    api.users.getAll().then(({ users }) => setAllUsers(users.map((u: any) => ({ ...u, id: u._id }))));
+  }, []);
 
   const countryOptions = Array.from(new Set(allUsers.map(u => u.country).filter(Boolean))) as string[];
   const placeOptions = Array.from(

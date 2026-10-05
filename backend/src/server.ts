@@ -1,29 +1,22 @@
 import { app } from './app.js';
 import { config } from './config/index.js';
-import { connectDB } from './config/db.js';
+import { connectDB, disconnectDB } from './config/db.js';
 import { Admin } from './models/Admin.js';
 
 async function startServer() {
   try {
-    // Attempt DB connection
-    try {
-      await connectDB();
+    await connectDB();
 
-      // Ensure default admin user is initialized
-      const defaultAdmin = await Admin.findOne({
-        username: config.adminDefaultUsername.toLowerCase(),
+    const defaultAdmin = await Admin.findOne({
+      username: config.adminDefaultUsername.toLowerCase(),
+    });
+    if (!defaultAdmin) {
+      await Admin.create({
+        username: config.adminDefaultUsername,
+        password: config.adminDefaultPassword,
+        role: 'admin',
       });
-      if (!defaultAdmin) {
-        await Admin.create({
-          username: config.adminDefaultUsername,
-          password: config.adminDefaultPassword,
-          role: 'admin',
-        });
-        console.log(`[Bootstrap] Default admin created: ${config.adminDefaultUsername}`);
-      }
-    } catch (dbErr: any) {
-      console.warn(`[Server] Warning: MongoDB connection failed (${dbErr.message}). API server will continue running.`);
-      console.warn(`[Server] Please ensure MongoDB is started (or configure MONGO_URI in .env).`);
+      console.log(`[Bootstrap] Default admin created: ${config.adminDefaultUsername}`);
     }
 
     const server = app.listen(config.port, () => {
@@ -36,11 +29,14 @@ async function startServer() {
     });
 
     // Graceful shutdown
+    let shuttingDown = false;
     const handleShutdown = (signal: string) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       console.log(`\n[Server] Received ${signal}. Shutting down gracefully...`);
       server.close(() => {
         console.log('[Server] HTTP server closed.');
-        process.exit(0);
+        disconnectDB().finally(() => process.exit(0));
       });
     };
 
@@ -48,6 +44,7 @@ async function startServer() {
     process.on('SIGTERM', () => handleShutdown('SIGTERM'));
   } catch (error) {
     console.error('[Server] Fatal startup error:', error);
+    console.error('[Server] API did not start because MongoDB is unavailable.');
     process.exit(1);
   }
 }
