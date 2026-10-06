@@ -10,9 +10,11 @@ export function Layout({ children }: LayoutProps) {
       <header className="bg-white border-b-4 border-orange-500 shadow-sm flex-shrink-0">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-b from-orange-500 via-white to-green-600 rounded-full flex items-center justify-center">
-              <span className="text-blue-900 font-bold text-xl">🇮🇳</span>
-            </div>
+            <img
+              src="/india-flag-badge.png"
+              alt="Indian flag"
+              className="w-12 h-12 rounded-full object-cover"
+            />
             <div className="text-center">
               <h1 className="text-2xl font-bold text-blue-900">NRI Remote Voting System</h1>
               <p className="text-sm text-gray-600">Government of India</p>

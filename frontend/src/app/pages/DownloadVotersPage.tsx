@@ -109,9 +109,7 @@ export function DownloadVotersPage() {
     const printContent = `
       <div style="font-family:Arial,sans-serif;font-size:9pt;color:#1a1a2e;">
         <div style="display:flex;align-items:center;gap:14px;padding:14px 0 12px;border-bottom:3px solid #138808;">
-          <div style="width:52px;height:52px;border-radius:50%;background:conic-gradient(#FF9933 0deg 120deg,#fff 120deg 240deg,#138808 240deg 360deg);display:flex;align-items:center;justify-content:center;border:2px solid #ddd;flex-shrink:0;">
-            <span style="font-weight:900;font-size:13pt;color:#000080;">IN</span>
-          </div>
+          <img src="/india-flag-badge.png" alt="Indian flag" style="width:52px;height:52px;object-fit:cover;border-radius:50%;border:2px solid #ddd;flex-shrink:0;">
           <div>
             <div style="font-size:17pt;font-weight:900;color:#000080;">NRI Remote Voting System</div>
             <div style="font-size:9pt;color:#555;margin-top:2px;">Government of India &nbsp;|&nbsp; Voter Details Report</div>
@@ -191,10 +189,11 @@ export function DownloadVotersPage() {
 
           {/* PDF Preview Header */}
           <div className="flex items-center gap-4 px-8 py-5 bg-white border-b-2 border-green-600">
-            <div className="w-14 h-14 rounded-full flex-shrink-0 flex items-center justify-center font-black text-blue-900 text-sm border-2 border-gray-200"
-              style={{ background: 'conic-gradient(#FF9933 0deg 120deg, #fff 120deg 240deg, #138808 240deg 360deg)' }}>
-              IN
-            </div>
+            <img
+              src="/india-flag-badge.png"
+              alt="Indian flag"
+              className="w-14 h-14 rounded-full flex-shrink-0 object-cover border-2 border-gray-200"
+            />
             <div>
               <h1 className="text-2xl font-black text-blue-900 tracking-wide">NRI Remote Voting System</h1>
               <p className="text-gray-500 text-sm">Government of India</p>
