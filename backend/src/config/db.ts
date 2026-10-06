@@ -13,6 +13,22 @@ export async function connectDB(): Promise<typeof mongoose> {
       connectTimeoutMS: 10000,
     });
     console.log(`[Database] MongoDB Connected: ${conn.connection.host}`);
+
+    // Older deployments had a unique `externalId` index on users. That field
+    // is no longer part of the User schema, so documents without it all share
+    // the same null index key and the second registration fails with E11000.
+    // Remove only that obsolete index; preserve every current/other index.
+    const usersCollection = conn.connection.db?.collection('users');
+    if (usersCollection) {
+      const indexes = await usersCollection.listIndexes().toArray();
+      for (const index of indexes) {
+        if (index.name !== '_id_' && Object.hasOwn(index.key, 'externalId')) {
+          await usersCollection.dropIndex(index.name);
+          console.log(`[Database] Dropped obsolete users index: ${index.name}`);
+        }
+      }
+    }
+
     return conn;
   } catch (error) {
     console.error(`[Database] Error connecting to MongoDB: ${(error as Error).message}`);
