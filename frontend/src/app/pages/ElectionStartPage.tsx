@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { DISTRICTS_BY_STATE } from '../data/indiaData';
 import { CountryClockSelector } from '../components/RegionalClockCard';
-import { getCountryElectionStatus, getCountryFlag, computeLiveElectionStatus, checkAndAutoStopElection, addDaysToDate } from '../utils/timezoneUtils';
+import { getCountryElectionStatus, getCountryFlag, addDaysToDate } from '../utils/timezoneUtils';
 import { Time12Input } from '../components/Time12Input';
 import { api } from '../services/api';
 
@@ -93,12 +93,11 @@ export function ElectionStartPage() {
     }).catch(error => setErrors([error instanceof Error ? error.message : 'Could not load shared voters and candidates.']));
   }, []);
 
-  // Live ticking clock (1-second precision) and automatic election stop checker
+  // Keep the displayed clock current. Schedule state changes are synced through
+  // the event listeners instead of replacing it every second, so form controls
+  // remain stable while the clock ticks.
   useEffect(() => {
-    const update = () => {
-      const current = new Date();
-      setNow(current);
-      checkAndAutoStopElection(current, previewCountry, previewCity);
+    const syncSchedule = () => {
       const saved = localStorage.getItem('electionSchedule');
       if (saved) {
         setExisting(JSON.parse(saved));
@@ -107,16 +106,15 @@ export function ElectionStartPage() {
       }
     };
 
-    update();
-    const id = setInterval(update, 1000);
-    window.addEventListener('electionScheduleUpdated', update);
-    window.addEventListener('storage', update);
+    const clockId = setInterval(() => setNow(new Date()), 1000);
+    window.addEventListener('electionScheduleUpdated', syncSchedule);
+    window.addEventListener('storage', syncSchedule);
     return () => {
-      clearInterval(id);
-      window.removeEventListener('electionScheduleUpdated', update);
-      window.removeEventListener('storage', update);
+      clearInterval(clockId);
+      window.removeEventListener('electionScheduleUpdated', syncSchedule);
+      window.removeEventListener('storage', syncSchedule);
     };
-  }, [previewCountry, previewCity]);
+  }, []);
 
   // Initialize input fields from existing schedule on mount
   useEffect(() => {
@@ -252,7 +250,6 @@ export function ElectionStartPage() {
     setPreviewCountry('');
     setPreviewCity('');
     setExisting(null);
-    window.location.reload();
   }
 
   async function handleClear() {
@@ -269,7 +266,6 @@ export function ElectionStartPage() {
     setPreviewCountry('');
     setPreviewCity('');
     setExisting(null);
-    window.location.reload();
   }
 
   function handleStateChange(val: string) {
@@ -284,7 +280,10 @@ export function ElectionStartPage() {
     setParliamentConstituency('');
   }
 
-  const liveStatus = computeLiveElectionStatus(existing, now, previewCountry, previewCity);
+  // Previewing a country's clock must never end or reset the shared election.
+  // Show the saved election state here and keep the selected inspector country
+  // independent from the schedule's lifecycle.
+  const liveStatus = existing?.status === 'ended' ? 'ended' : existing ? 'active' : 'no_election';
   const isElectionActive = liveStatus === 'active';
 
   const effectiveSchedule = existing || (date && fromTime && toTime && resultDate && resultTime ? {
@@ -305,46 +304,6 @@ export function ElectionStartPage() {
   const countryPreview = effectiveSchedule && previewCountry
     ? getCountryElectionStatus(effectiveSchedule, previewCountry, previewCity, now)
     : null;
-
-  // Automatically stop, reset all entered fields, and refresh the whole page when election ends
-  useEffect(() => {
-    if (!existing) return;
-
-    const checkCountry = existing.country || previewCountry;
-    const checkCity = existing.city || previewCity;
-    const targetStatus = checkCountry
-      ? getCountryElectionStatus(existing, checkCountry, checkCity, now).status
-      : null;
-
-    const isEnded =
-      existing.status === 'ended' ||
-      liveStatus === 'ended' ||
-      countryPreview?.status === 'ended' ||
-      targetStatus === 'ended';
-
-    if (isEnded) {
-      localStorage.removeItem('electionSchedule');
-      localStorage.removeItem('selectedPreviewCountry');
-      localStorage.removeItem('selectedPreviewCity');
-      window.dispatchEvent(new CustomEvent('electionScheduleUpdated', { detail: null }));
-
-      setDate('');
-      setFromTime('');
-      setToTime('');
-      setResultDate('');
-      setResultTime('');
-      setState('');
-      setDistrict('');
-      setAssemblyConstituency('');
-      setParliamentConstituency('');
-      setAllConstituencies(true);
-      setPreviewCountry('');
-      setPreviewCity('');
-      setExisting(null);
-
-      window.location.reload();
-    }
-  }, [existing, liveStatus, countryPreview?.status, previewCountry, previewCity]);
 
   return (
     <Layout>
