@@ -136,7 +136,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(payload),
       }),
-    getResults: (params?: { electionType?: string; state?: string; district?: string; constituency?: string }) => {
+    getResults: (params?: { electionType?: string; state?: string; district?: string; constituency?: string; date?: string }) => {
       const query = new URLSearchParams(params as Record<string, string>).toString();
       return request<{ success: boolean; results: any[] }>(`/votes/results${query ? `?${query}` : ''}`);
     },

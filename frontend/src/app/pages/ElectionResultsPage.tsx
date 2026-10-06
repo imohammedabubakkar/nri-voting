@@ -42,6 +42,10 @@ const ALL_STATES = Object.keys(DISTRICTS_BY_STATE).sort();
 const selectCls =
   'w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none bg-white text-sm';
 
+function getIndiaDateValue(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
 function StatCard({ label, value, color }: { label: string; value: string | number; color: string }) {
   return (
     <div className={`rounded-xl p-5 text-white ${color}`}>
@@ -64,15 +68,14 @@ function ResultPanel({
   voters: RegisteredUser[];
   votesData: Record<string, Record<string, Record<string, number>>>;
 }) {
-  const voteKey = electionType === 'assembly' ? 'hasVotedAssembly' : 'hasVotedParliament';
   const registered = voters.length;
-  const voted = voters.filter(u => u[voteKey]).length;
-  const absent = registered - voted;
-  const turnout = registered > 0 ? ((voted / registered) * 100).toFixed(1) : '0.0';
 
   // Collect votes for this constituency from votesData
   const constitVotes: Record<string, number> = votesData[electionType]?.[constituencyName] || {};
   const totalVotesRecorded = Object.values(constitVotes).reduce((s, v) => s + v, 0);
+  const voted = totalVotesRecorded;
+  const absent = Math.max(0, registered - voted);
+  const turnout = registered > 0 ? ((voted / registered) * 100).toFixed(1) : '0.0';
 
   // Only display candidates and NOTA if at least one real candidate is assigned
   const hasRealCandidate = candidates.some(c => !isNotaCandidate(c));
@@ -224,9 +227,10 @@ export function ElectionResultsPage() {
   const [, setRefresh] = useState(0);
   const [now, setNow] = useState<Date>(new Date());
   const [adminPreviewUnlocked, setAdminPreviewUnlocked] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(getIndiaDateValue);
 
   useEffect(() => {
-    Promise.all([api.users.getAll(), api.candidates.getAll(), api.election.getSchedule(), api.votes.getResults()])
+    Promise.all([api.users.getAll(), api.candidates.getAll(), api.election.getSchedule(), api.votes.getResults({ date: selectedDate })])
       .then(([users, candidates, election, result]) => {
         localStorage.setItem('registeredUsers', JSON.stringify(users.users.map((u: any) => ({ ...u, id: u._id }))));
         localStorage.setItem('registeredCandidates', JSON.stringify(candidates.candidates.map((c: any) => ({ ...c, id: c._id }))));
@@ -241,7 +245,7 @@ export function ElectionResultsPage() {
         localStorage.setItem('votesData', JSON.stringify(votesData));
         setRefresh(value => value + 1);
       }).catch(error => alert(error instanceof Error ? error.message : 'Could not load shared election results.'));
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -260,12 +264,16 @@ export function ElectionResultsPage() {
 
   const schedule = JSON.parse(localStorage.getItem('electionSchedule') || 'null');
   const releaseStatus = getResultReleaseStatus(schedule, now);
+  const todayInIndia = getIndiaDateValue(now);
 
   const allUsers: RegisteredUser[] = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
   const rawCandidates: Candidate[] = JSON.parse(localStorage.getItem('registeredCandidates') || '[]');
   const allCandidates: Candidate[] = ensureNotaCandidates(rawCandidates as any) as Candidate[];
   const votesData: Record<string, Record<string, Record<string, number>>> = JSON.parse(
     localStorage.getItem('votesData') || '{}'
+  );
+  const hasResultsForDate = Object.values(votesData).some(constituencies =>
+    Object.values(constituencies).some(candidates => Object.values(candidates).some(votes => votes > 0))
   );
 
   const districtOptions = filterState ? DISTRICTS_BY_STATE[filterState] || [] : [];
@@ -545,6 +553,18 @@ export function ElectionResultsPage() {
                 </h3>
 
                 <div className="grid sm:grid-cols-2 gap-4">
+                  {/* Results date */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                      Results Date (India Time)
+                    </label>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={e => e.target.value && setSelectedDate(e.target.value)}
+                      className={selectCls}
+                    />
+                  </div>
                   {/* State */}
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
@@ -640,7 +660,15 @@ export function ElectionResultsPage() {
               </div>
 
               {/* Results */}
-              {!showResults ? (
+              {!hasResultsForDate ? (
+                <div className="text-center py-12 text-gray-500 bg-gray-50 border border-gray-200 rounded-xl">
+                  <CalendarDays className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+                  <p className="text-lg font-semibold">No election was conducted on this date</p>
+                  <p className="text-sm mt-1">
+                    No votes or published results were found for {new Date(`${selectedDate}T00:00:00+05:30`).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' })}.
+                  </p>
+                </div>
+              ) : !showResults ? (
                 <div className="text-center py-20 text-gray-400">
                   <MapPin className="w-14 h-14 mx-auto mb-4 opacity-25" />
                   <p className="text-lg font-semibold text-gray-500">Select a constituency above to view results</p>

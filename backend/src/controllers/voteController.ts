@@ -127,13 +127,21 @@ export async function castVote(
 // Get election results
 export async function getResults(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { electionType, state, district, constituency } = req.query;
+    const { electionType, state, district, constituency, date } = req.query;
 
     const matchQuery: any = {};
     if (electionType && typeof electionType === 'string') matchQuery.electionType = electionType;
     if (state && typeof state === 'string') matchQuery.state = state;
     if (district && typeof district === 'string') matchQuery.district = district;
     if (constituency && typeof constituency === 'string') matchQuery.constituency = constituency;
+    // Treat the selected date as an India calendar day, independent of server timezone.
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const dayStart = new Date(`${date}T00:00:00+05:30`);
+      if (!Number.isNaN(dayStart.getTime()) && new Date(dayStart.getTime() + 330 * 60 * 1000).toISOString().slice(0, 10) === date) {
+        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+        matchQuery.votedAt = { $gte: dayStart, $lt: dayEnd };
+      }
+    }
 
     // Aggregate votes by candidate
     const voteAggregations = await Vote.aggregate([
